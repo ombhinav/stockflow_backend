@@ -5,6 +5,10 @@ const { generateOTP, sendWhatsAppOTP } = require('../services/twilio.service');
 const { generateToken } = require('../utils/jwt.util');
 const { OTP_EXPIRY_MINUTES } = require('../config/constants');
 
+// Demo credentials for testing (no Twilio charges)
+const DEMO_PHONE = '9999999999';
+const DEMO_OTP = '000000';
+
 // POST /api/auth/register - Send OTP
 router.post('/register', async (req, res) => {
   try {
@@ -14,6 +18,30 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'Invalid phone number' });
     }
 
+    // Demo mode: Use demo OTP without calling Twilio
+    if (phoneNumber === DEMO_PHONE) {
+      console.log('📱 Demo mode activated - Using test OTP');
+      const otpExpiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
+      
+      const query = `
+        INSERT INTO users (phone_number, otp, otp_expires_at)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (phone_number) 
+        DO UPDATE SET otp = $2, otp_expires_at = $3
+        RETURNING id
+      `;
+      
+      await pool.query(query, [phoneNumber, DEMO_OTP, otpExpiresAt]);
+      
+      return res.json({ 
+        success: true, 
+        message: 'Demo OTP ready: Use 000000',
+        expiresIn: OTP_EXPIRY_MINUTES,
+        demo: true
+      });
+    }
+
+    // Production mode: Generate and send real OTP
     const otp = generateOTP();
     const otpExpiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
