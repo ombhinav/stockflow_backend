@@ -25,6 +25,7 @@
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.3",
     "node-cron": "^4.2.1",
+    "pdf-parse": "^1.1.4",
     "pg": "^8.16.3",
     "stock-nse-india": "^1.2.2",
     "twilio": "^5.11.1"
