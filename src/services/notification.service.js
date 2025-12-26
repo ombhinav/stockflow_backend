@@ -86,7 +86,7 @@ class NotificationService {
   }
 
   // ============================================
-  // Fetch NSE Announcements
+  // Fetch NSE Announcements - FIXED
   // ============================================
 
   async fetchNSEAnnouncements() {
@@ -100,10 +100,16 @@ class NotificationService {
         timeout: 10000
       });
 
-      // Parse response based on NSE API structure
-      const announcements = response.data?.gsx$_cokwr?._t || [];
+      // FIXED: Direct array response, not nested
+      const announcements = Array.isArray(response.data) ? response.data : [];
       
       console.log(`[INFO] Fetched ${announcements.length} announcements from NSE`);
+      
+      // Debug: Log first announcement structure
+      if (announcements.length > 0) {
+        console.log('[DEBUG] First announcement:', JSON.stringify(announcements[0], null, 2));
+      }
+      
       return announcements;
       
     } catch (error) {
@@ -113,24 +119,25 @@ class NotificationService {
   }
 
   // ============================================
-  // Process Individual Announcement
+  // Process Individual Announcement - FIXED
   // ============================================
 
   async processAnnouncement(announcement) {
     try {
-      const symbol = announcement.gsx$symbol?.$t || announcement.symbol;
-      const desc = announcement.gsx$desc?.$t || announcement.desc;
-      const seqId = announcement.gsx$seqid?.$t || announcement.seq_id;
-      const attchmnt = announcement.gsx$attchmnt?.$t || announcement.attchmntFile;
-      const date = announcement.gsx$an_dt?.$t || announcement.an_dt;
-      const companyName = announcement.gsx$sm_name?.$t || announcement.sm_name;
+      // FIXED: Use direct properties from the API response
+      const symbol = announcement.symbol;
+      const desc = announcement.desc;
+      const seqId = announcement.seq_id;
+      const attchmnt = announcement.attchmntFile;
+      const date = announcement.an_dt;
+      const companyName = announcement.sm_name;
 
       if (!symbol) {
         console.log('[WARN] Skipping announcement without symbol');
         return;
       }
 
-      console.log(`[INFO] Processing announcement for ${symbol}`);
+      console.log(`[INFO] Processing announcement for ${symbol}: ${desc}`);
       
       // Get users watching this symbol from database
       const watchers = await this.getWatchlistUsers(symbol);
@@ -185,6 +192,10 @@ class NotificationService {
       `;
       
       const { rows } = await pool.query(query, [symbol.toUpperCase()]);
+      
+      // Debug log
+      console.log(`[DEBUG] Found ${rows.length} watchers for ${symbol}`);
+      
       return rows;
     } catch (error) {
       console.error('[ERROR] Failed to get watchlist users:', error.message);
