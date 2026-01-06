@@ -15,11 +15,16 @@ const getGeminiClient = () => {
 const summarizeNews = async (newsContent, stockSymbol, stockName) => {
   try {
     const genAI = getGeminiClient();
-    const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
-    const prompt = `Summarize the following stock news for ${stockName} (${stockSymbol}) in 2-3 concise sentences for a WhatsApp alert. Focus on key information and potential impact on investors. Be clear and direct.
+    const prompt = `You are a financial analyst. Summarize this corporate announcement for a retail investor.
+                Company: ${stockName}
+                Announcement: ${newsContent}
+                Output requirements:
+                - exactly 3 short bullet points.
+                - If it mentions numbers, highlight them.
+                - Keep it under 50 words total.`;
 
-News: ${newsContent}`;
 
     const result = await model.generateContent(prompt);
     
