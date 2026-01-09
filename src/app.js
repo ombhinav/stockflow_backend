@@ -53,9 +53,6 @@ const corsOptions = {
 // Apply CORS middleware
 app.use(cors(corsOptions));
 
-// IMPORTANT: Preflight must use SAME config
-app.options("*", cors(corsOptions));
-
 console.log("working 2");
 
 /* =========================
