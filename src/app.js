@@ -20,6 +20,7 @@ app.use(
   })
 );
 
+console.log("working 1");
 /* =========================
    🌍 CORS CONFIGURATION
 ========================= */
@@ -53,6 +54,8 @@ app.use(cors(corsOptions));
 
 // IMPORTANT: Preflight must use SAME config
 app.options("*", cors(corsOptions));
+
+console.log("working 2");
 
 /* =========================
    🚦 Rate Limiting
@@ -139,5 +142,7 @@ app.use((err, req, res, next) => {
   console.error("❌ Error:", err.message || err);
   res.status(500).json({ error: "Internal server error" });
 });
+
+console.log("working 3");
 
 module.exports = app;
