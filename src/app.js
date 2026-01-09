@@ -13,12 +13,23 @@ const app = express();
 app.use(helmet());
 
 // CORS with restricted origins
-const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000', 'http://localhost:5173', 'https://equisense-web.onrender.com'];
+const allowedOrigins =
+  process.env.ALLOWED_ORIGINS?.split(",") || [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "https://equisense-web.onrender.com"
+  ];
+
 app.use(cors({
   origin: allowedOrigins,
   credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
   optionsSuccessStatus: 200
 }));
+
+app.options("*", cors());
+
 
 // Rate limiting
 const limiter = rateLimit({
@@ -33,7 +44,13 @@ const authLimiter = rateLimit({
   message: 'Too many authentication attempts, please try again later.'
 });
 
-app.use(limiter);
+// Allow OPTIONS preflight without rate limiting
+app.use((req, res, next) => {
+  if (req.method === "OPTIONS") {
+    return next();
+  }
+  return limiter(req, res, next);
+});
 
 // Middleware
 app.use(express.json());
