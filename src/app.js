@@ -13,7 +13,7 @@ const app = express();
 app.use(helmet());
 
 // CORS with restricted origins
-const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000', 'http://localhost:5173'];
+const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000', 'http://localhost:5173', 'https://equisense-web.onrender.com'];
 app.use(cors({
   origin: allowedOrigins,
   credentials: true,
