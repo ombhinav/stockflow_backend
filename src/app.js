@@ -26,10 +26,9 @@ console.log("working 1");
 ========================= */
 
 const allowedOrigins = [
+    "https://stockfloww.com",
   "http://localhost:3000",
-  "http://localhost:5173",
-  "https://equisense-web.onrender.com",
-  "https://stockfloww.com"
+  "http://localhost:5173"
 ];
 
 const corsOptions = {
