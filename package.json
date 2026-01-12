@@ -27,6 +27,7 @@
     "node-cron": "^4.2.1",
     "pdf-parse": "^1.1.4",
     "pg": "^8.16.3",
+    "razorpay": "^2.9.6",
     "stock-nse-india": "^1.2.2",
     "twilio": "^5.11.1"
   },

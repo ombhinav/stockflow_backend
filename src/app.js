@@ -7,6 +7,7 @@ const authRoutes = require("./routes/auth.routes");
 const stocksRoutes = require("./routes/stocks.routes");
 const alertsRoutes = require("./routes/alerts.routes");
 const notificationsRoutes = require("./routes/notifications.routes");
+const paymentRoutes = require("./routes/payment.routes"); // <--- 1. NEW IMPORT
 
 const app = express();
 
@@ -26,20 +27,17 @@ console.log("working 1");
 ========================= */
 
 const allowedOrigins = [
-    "https://stockfloww.com",
+  "https://stockfloww.com",
   "http://localhost:3000",
   "http://localhost:5173"
 ];
 
 const corsOptions = {
   origin: function (origin, callback) {
-    // Allow requests without origin (curl, server-to-server)
     if (!origin) return callback(null, true);
-
     if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
-
     console.error("❌ Blocked by CORS:", origin);
     return callback(new Error("Not allowed by CORS"));
   },
@@ -49,9 +47,7 @@ const corsOptions = {
   optionsSuccessStatus: 200
 };
 
-// Apply CORS middleware
 app.use(cors(corsOptions));
-
 
 console.log("working 2");
 
@@ -60,7 +56,7 @@ console.log("working 2");
 ========================= */
 
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: 15 * 60 * 1000, 
   max: 100,
   message: "Too many requests from this IP, please try again later."
 });
@@ -71,7 +67,7 @@ const authLimiter = rateLimit({
   message: "Too many authentication attempts, please try again later."
 });
 
-// Allow OPTIONS preflight to bypass rate limiter
+// Bypass rate limiter for OPTIONS
 app.use((req, res, next) => {
   if (req.method === "OPTIONS") {
     return next();
@@ -112,6 +108,7 @@ app.use("/api/auth", authLimiter, authRoutes);
 app.use("/api/stocks", stocksRoutes);
 app.use("/api/alerts", alertsRoutes);
 app.use("/api/notifications", notificationsRoutes);
+app.use("/api/payments", paymentRoutes); // <--- 2. NEW ROUTE
 
 /* =========================
    ❤️ Health Check
