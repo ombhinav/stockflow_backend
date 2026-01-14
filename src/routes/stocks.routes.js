@@ -2,10 +2,12 @@ const express = require('express');
 const router = express.Router();
 const axios = require('axios');
 const { searchStocks } = require('../services/nse.service');
-const { summarizeNews } = require('../services/gemini.service');
+const { summarizeNews } = require('../services/grok.service');
 const { authenticate } = require('../middleware/auth.middleware');
 const pool = require('../config/database');
 const rateLimit = require('express-rate-limit');
+const notificationService = require('../services/notification.service');
+
 
 // ============================================
 // AI Analysis Rate Limiter
@@ -125,26 +127,50 @@ router.get('/announcements', authenticate, async (req, res) => {
 // ============================================
 
 router.post('/analyze', authenticate, aiAnalysisLimiter, async (req, res) => {
+  console.log("🔥🔥 ANALYZE ROUTE HIT 🔥🔥");
   try {
-    const { symbol, description, content } = req.body;
+    const { symbol, description, content, pdfUrl } = req.body;
 
     if (!symbol || !description) {
       return res.status(400).json({ error: 'Symbol and description required' });
     }
 
-    // Generate AI analysis using Gemini
-    const analysis = await summarizeNews(content || description, symbol, 'Company');
+    let finalText = content || description;
+
+    // ✅ If PDF URL exists → parse it
+    if (pdfUrl) {
+      console.log("📎 PDF URL received for analysis:", pdfUrl);
+
+      try {
+        const pdfText = await notificationService.extractPDFSnippet(pdfUrl);
+
+        if (pdfText && pdfText.length > 200) {
+          finalText = `${description}\n\n${pdfText}`;
+          console.log("✅ Using extracted PDF text for AI analysis");
+        } else {
+          console.warn("⚠️ PDF text too small, falling back to description");
+        }
+      } catch (err) {
+        console.error("❌ PDF parsing failed:", err.message);
+      }
+    } else {
+      console.log("ℹ️ No PDF URL provided, using description only");
+    }
+
+    const analysis = await summarizeNews(finalText, symbol, 'Company');
 
     res.json({ 
       success: true, 
       analysis,
       symbol
     });
+
   } catch (error) {
-    console.error('AI Analysis error:', error);
+    console.error('AI Analysis error:', error.message);
     res.status(500).json({ error: 'Failed to generate analysis' });
   }
 });
+
 
 // ============================================
 // Helper Functions

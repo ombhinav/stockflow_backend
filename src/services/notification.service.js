@@ -2,7 +2,7 @@ const axios = require('axios');
 const pdf = require('pdf-parse');
 const pool = require('../config/database');
 const { sendWhatsAppAlert } = require('./twilio.service');
-const { summarizeNews } = require('./gemini.service');
+const { summarizeNews } = require('./grok.service');
 const { NSE_ANNOUNCEMENTS_URL } = require('../config/constants');
 
 // ============================================
@@ -339,32 +339,61 @@ _⚠️ Immediate attention recommended_`;
 
     return '📢 Corporate announcement filed with exchange.';
   }
+// ============================================
+// Extract PDF Snippet (Smart Extraction)
+// ============================================
 
-  // ============================================
-  // Extract PDF Snippet (First Page Only)
-  // ============================================
+async extractPDFSnippet(pdfUrl, maxChars = 6000) {
+  try {
+    const response = await axios.get(pdfUrl, {
+      responseType: 'arraybuffer',
+      timeout: 15000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      }
+    });
 
-  async extractPDFSnippet(pdfUrl, maxChars = 2000) {
-    try {
-      const response = await axios.get(pdfUrl, {
-        responseType: 'arraybuffer',
-        timeout: 10000,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        }
-      });
+    const data = await pdf(response.data);
+    const rawText = data.text || "";
 
-      const data = await pdf(response.data);
-      const text = data.text.substring(0, maxChars);
-      
-      console.log(`[INFO] Extracted ${text.length} chars from PDF`);
-      return text;
-      
-    } catch (error) {
-      console.error('[ERROR] PDF extraction failed:', error.message);
-      return '';
+    if (!rawText || rawText.length < 200) {
+      console.warn("[WARN] PDF contains very little readable text");
+      return "";
     }
+
+    // -----------------------------
+    // Clean up extracted text
+    // -----------------------------
+    const cleanedText = rawText
+      .replace(/\n{3,}/g, "\n\n")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    // -----------------------------
+    // If text is already small enough → return all
+    // -----------------------------
+    if (cleanedText.length <= maxChars) {
+      console.log(`[INFO] Extracted ${cleanedText.length} chars from PDF (full text used)`);
+      return cleanedText;
+    }
+
+    // -----------------------------
+    // Otherwise → prioritize beginning (usually first page)
+    // -----------------------------
+    const sliced = cleanedText.slice(0, maxChars);
+
+    console.log(
+      `[INFO] Extracted ${sliced.length} chars from PDF (trimmed from ${cleanedText.length})`
+    );
+
+    return sliced;
+
+  } catch (error) {
+    console.error('[ERROR] PDF extraction failed:', error.message);
+    return '';
   }
+}
+
 
   // ============================================
   // Log Notification in Database
