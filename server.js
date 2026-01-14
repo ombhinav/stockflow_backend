@@ -1,16 +1,27 @@
 require('dotenv').config();
 const app = require('./src/app');
 const pool = require('./src/config/database');
+const fs = require('fs');
+const path = require('path');
 const { startMonitoring } = require('./src/services/monitoring.service');
+const { syncCalendarEvents } = require('./src/services/calendar.service'); // <--- New Import
 
 const PORT = process.env.PORT || 5000;
 
-// Initialize database schema
+// 1. Define the missing function
+// ... existing imports ...
+
 const initializeDatabase = async () => {
   try {
-    const fs = require('fs');
-    const path = require('path');
+    // FIX: Point to 'src/models/schema.sql' instead of root
     const schemaPath = path.join(__dirname, 'src', 'models', 'schema.sql');
+    
+    // Check if file exists before reading to avoid crashing
+    if (!fs.existsSync(schemaPath)) {
+        console.error(`❌ Schema file not found at: ${schemaPath}`);
+        return false;
+    }
+
     const schema = fs.readFileSync(schemaPath, 'utf8');
     
     await pool.query(schema);
@@ -18,28 +29,32 @@ const initializeDatabase = async () => {
     return true;
   } catch (error) {
     console.warn('⚠️ Database initialization warning:', error.message);
-    console.warn('⚠️ Database may not be available. Some features will not work until DB is connected.');
     return false;
   }
 };
 
-// Start server
+// ... rest of server.js ...
+
+// 2. Start Server
 const startServer = async () => {
   try {
     const dbInitialized = await initializeDatabase();
     
-    app.listen(PORT, () => {
+    app.listen(PORT, async () => {
       console.log(`\n🚀 StockFlow Backend running on port ${PORT}`);
       console.log(`📍 Health check: http://localhost:${PORT}/health`);
       console.log(`📍 API Base URL: http://localhost:${PORT}/api`);
       
       if (dbInitialized) {
         console.log('✅ Database is connected and initialized');
-        // Start news monitoring service only if DB is ready
-        startMonitoring();
+        
+        // Start Background Services
+        startMonitoring(); 
+        
+        // Start Calendar Sync (Fetches NSE data)
+        await syncCalendarEvents(); 
       } else {
-        console.log('⚠️ Monitoring service skipped - database not available');
-        console.log('⚠️ Please configure DATABASE_URL or local DB credentials to enable monitoring');
+        console.log('⚠️ Services skipped - database not available');
       }
     });
   } catch (error) {

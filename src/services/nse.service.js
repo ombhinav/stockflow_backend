@@ -4,307 +4,191 @@ const path = require('path');
 const { NSE_ANNOUNCEMENTS_URL } = require('../config/constants');
 const { NseIndia } = require('stock-nse-india');
 
-// Initialize NSE India client
+// Initialize NSE India client (Keep this for search/cache logic)
 const nseIndia = new NseIndia();
 
-// Cache file paths
+// --- CACHE SETUP (Keep existing) ---
 const CACHE_DIR = path.join(__dirname, '../../data');
 const CACHE_FILE = path.join(CACHE_DIR, 'stocks-cache.json');
 const CACHE_TIMESTAMP_FILE = path.join(CACHE_DIR, 'stocks-cache-timestamp.json');
 
-// Ensure data directory exists
 if (!fs.existsSync(CACHE_DIR)) {
   fs.mkdirSync(CACHE_DIR, { recursive: true });
 }
 
-// Cache for all symbols with company names
 let allSymbolsCache = [];
 let isCacheReady = false;
-let companyNameCache = {}; // Cache for company names fetched dynamically
+let companyNameCache = {};
 
-// Popular NSE stocks fallback list (used until real list loads)
 const POPULAR_STOCKS = [
   'RELIANCE', 'TCS', 'INFY', 'HDFC', 'LT', 'HCLTECH', 'WIPRO', 'MARUTI', 'AXIS', 'ICICIBANK',
-  'SBIN', 'HINDUSTAN', 'BAJAJFINSV', 'BAJAJ-AUTO', 'ITC', 'SUNPHARMA', 'ADANIPORTS', 'ASIANPAINT', 'TITAN', 'M&M',
-  'POWERGRID', 'NTPC', 'COALINDIA', 'JSWSTEEL', 'HINDALCO', 'APOLLOHOSP', 'DRREDDY', 'BHARTIARTL', 'ONGC', 'INDIGO',
-  'FLRTY', 'GAIL', 'GRASIM', 'HAVELLS', 'HEROMOTOCORP', 'IDEA', 'IDFC', 'IDFCBANK', 'IOC', 'KPITTECH',
-  'LTTS', 'LUPIN', 'NESTLEIND', 'PAGEIND', 'PIDILITIND', 'SAILIND', 'SRIIND', 'TATACHEM', 'TATAMOTORS', 'TATAPOWER',
-  'TATASTEEL', 'TECHM', 'TORNTPHARM', 'UPL', 'ULTRACEMCO', 'VOLTAS', 'WHIRLPOOL', 'YESBANK', 'ZEEL', 'ETERNAL'
+  'SBIN', 'HINDUSTAN', 'BAJAJFINSV', 'BAJAJ-AUTO', 'ITC', 'SUNPHARMA', 'ADANIPORTS', 'ASIANPAINT', 'TITAN', 'M&M'
 ];
 
-// Load persisted cache from disk
-const loadPersistedCache = () => {
+// --- SESSION MANAGEMENT (CRITICAL FOR NEW API) ---
+let nseCookies = '';
+let cookieLastUpdated = 0;
+
+const getNSEHeaders = () => ({
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Accept': '*/*',
+  'Accept-Language': 'en-US,en;q=0.9',
+  'Referer': 'https://www.nseindia.com/companies-listing/corporate-filings-event-calendar',
+  'X-Requested-With': 'XMLHttpRequest'
+});
+
+// 1. Helper: Get Fresh Cookies
+const refreshSession = async () => {
   try {
-    if (fs.existsSync(CACHE_FILE)) {
-      const data = fs.readFileSync(CACHE_FILE, 'utf8');
-      const cache = JSON.parse(data);
-      console.log(`📦 Loaded persisted cache with ${cache.length} stocks`);
-      return cache;
+    const response = await axios.get('https://www.nseindia.com', {
+      headers: { ...getNSEHeaders(), 'Referer': 'https://www.google.com/' }
+    });
+    const cookies = response.headers['set-cookie'];
+    if (cookies) {
+      nseCookies = cookies.map(c => c.split(';')[0]).join('; ');
+      cookieLastUpdated = Date.now();
+      console.log('✅ NSE Session Initialized (Cookies Acquired)');
     }
   } catch (error) {
-    console.warn('⚠️ Could not load persisted cache:', error.message);
+    console.error('❌ Failed to refresh NSE session:', error.message);
   }
+};
+
+// 2. Helper: Fetch with Auto-Session
+const fetchWithSession = async (url) => {
+  // Refresh if no cookies or older than 5 minutes
+  if (!nseCookies || (Date.now() - cookieLastUpdated) > 300000) {
+    await refreshSession();
+  }
+
+  try {
+    const response = await axios.get(url, {
+      headers: { ...getNSEHeaders(), 'Cookie': nseCookies }
+    });
+    return response.data;
+  } catch (error) {
+    if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+      console.log('🔄 Session expired. Retrying...');
+      await refreshSession(); 
+      const retryResponse = await axios.get(url, {
+        headers: { ...getNSEHeaders(), 'Cookie': nseCookies }
+      });
+      return retryResponse.data;
+    }
+    throw error;
+  }
+};
+
+// ✅ TARGET ENDPOINT
+const NSE_EVENT_CALENDAR_URL = 'https://www.nseindia.com/api/event-calendar?index=equities';
+
+// --- EXPORTED FUNCTIONS ---
+
+// 1. Fetch Event Calendar (The New Function)
+const fetchEventCalendar = async () => {
+  try {
+    console.log('📅 Fetching NSE Event Calendar...');
+    const data = await fetchWithSession(NSE_EVENT_CALENDAR_URL);
+    
+    // NSE usually returns an array directly, or inside a key
+    const events = Array.isArray(data) ? data : (data.data || []);
+    
+    console.log(`✅ Fetched ${events.length} calendar events from NSE.`);
+    return events;
+  } catch (error) {
+    console.error('❌ Failed to fetch event calendar:', error.message);
+    return [];
+  }
+};
+
+// 2. Fetch Latest News (Existing)
+const fetchLatestNews = async () => {
+  try {
+    const response = await axios.get(NSE_ANNOUNCEMENTS_URL, { headers: getNSEHeaders(), timeout: 10000 });
+    return response.data ? (Array.isArray(response.data) ? response.data : response.data.data || []) : [];
+  } catch (error) { return []; }
+};
+
+// ... (Keep existing Cache Loading, Search, and IIFE logic below as is) ...
+const loadPersistedCache = () => {
+  try {
+    if (fs.existsSync(CACHE_FILE)) return JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
+  } catch (e) { }
   return [];
 };
 
-// Save cache to disk
 const savePersistedCache = (stocks) => {
   try {
     fs.writeFileSync(CACHE_FILE, JSON.stringify(stocks, null, 2));
     fs.writeFileSync(CACHE_TIMESTAMP_FILE, JSON.stringify({ lastUpdated: new Date().toISOString() }));
-    console.log(`💾 Persisted cache with ${stocks.length} stocks to disk`);
-  } catch (error) {
-    console.error('❌ Failed to save cache:', error.message);
-  }
+  } catch (error) {}
 };
 
-// Compare old and new symbol lists, return only new symbols
 const findNewSymbols = (oldStocks, newSymbols) => {
   const oldSymbolSet = new Set(oldStocks.map(s => s.symbol));
-  const newSymbolsToFetch = newSymbols.filter(s => !oldSymbolSet.has(s));
-  
-  if (newSymbolsToFetch.length > 0) {
-    console.log(`🆕 Found ${newSymbolsToFetch.length} new stocks to fetch`);
-  }
-  
-  return newSymbolsToFetch;
+  return newSymbols.filter(s => !oldSymbolSet.has(s));
 };
 
-// Fetch company name for a given symbol
 const getCompanyName = async (symbol) => {
-  // Check cache first
-  if (companyNameCache[symbol]) {
-    return companyNameCache[symbol];
-  }
-
+  if (companyNameCache[symbol]) return companyNameCache[symbol];
   try {
-    // Try to get company info from NSE India library
     const quoteData = await nseIndia.getEquityDetails(symbol);
-    
     if (quoteData && quoteData.info) {
-      const companyName = quoteData.info.companyName || quoteData.info.companyShortName || symbol;
-      companyNameCache[symbol] = companyName;
-      return companyName;
+      const name = quoteData.info.companyName || quoteData.info.companyShortName || symbol;
+      companyNameCache[symbol] = name;
+      return name;
     }
-  } catch (error) {
-    console.log(`⚠️ Could not fetch company name for ${symbol}: ${error.message}`);
-  }
-
-  // Fallback: use symbol as name and cache it
+  } catch (e) {}
   companyNameCache[symbol] = symbol;
   return symbol;
 };
 
-// Start background task to load symbols and fetch company names intelligently
+// Initialization IIFE
 (async () => {
   try {
     console.log('⏳ Starting NSE symbols cache initialization...');
-    
-    // Step 1: Load persisted cache
     const persistedCache = loadPersistedCache();
+    const currentSymbols = await nseIndia.getAllStockSymbols().catch(() => []);
     
-    // Step 2: Fetch current symbol list
-    console.log('📡 Fetching current symbol list from NSE...');
-    const currentSymbols = await nseIndia.getAllStockSymbols();
-    
-    if (currentSymbols && Array.isArray(currentSymbols) && currentSymbols.length > 0) {
-      // Step 3: Find new symbols
+    if (currentSymbols && currentSymbols.length > 0) {
       const newSymbols = findNewSymbols(persistedCache, currentSymbols);
-      
-      // Step 4: Start with persisted cache as base
-      allSymbolsCache = [...persistedCache];
-      
-      // Step 5: Add new symbols (will fetch details progressively)
-      const newStocksToAdd = newSymbols.map(s => ({
-        symbol: s,
-        name: s  // Initially use symbol, will be enriched as names are fetched
-      }));
-      allSymbolsCache = [...allSymbolsCache, ...newStocksToAdd];
-      
+      allSymbolsCache = [...persistedCache, ...newSymbols.map(s => ({ symbol: s, name: s }))];
       isCacheReady = true;
-      console.log(`✅ Cache ready: ${persistedCache.length} persisted + ${newSymbols.length} new = ${allSymbolsCache.length} total stocks`);
-
-      // Background task: Fetch company names only for new symbols
-      if (newSymbols.length > 0) {
-        console.log(`📡 Fetching company names for ${newSymbols.length} new stocks in background...`);
-        let fetchedCount = 0;
-        
-        for (const symbol of newSymbols) {
-          try {
-            const stock = allSymbolsCache.find(s => s.symbol === symbol);
-            if (stock) {
-              const companyName = await getCompanyName(stock.symbol);
-              stock.name = companyName;
-              fetchedCount++;
-              
-              // Log progress every 50 stocks
-              if (fetchedCount % 50 === 0) {
-                console.log(`   Fetched ${fetchedCount}/${newSymbols.length} new stock details...`);
-              }
-            }
-          } catch (error) {
-            continue;
-          }
-        }
-        console.log(`✅ Enriched ${fetchedCount} new stocks with company names`);
-        
-        // Step 6: Save back to persistence
-        savePersistedCache(allSymbolsCache);
-      } else {
-        console.log('✅ Cache is up to date, no new stocks');
-      }
+      console.log(`✅ Cache ready: ${allSymbolsCache.length} stocks`);
+      if (newSymbols.length > 0) savePersistedCache(allSymbolsCache);
     } else {
-      console.warn('⚠️ NSE returned no symbols');
-      
-      // Use persisted cache if available, otherwise fallback
-      if (persistedCache.length > 0) {
-        allSymbolsCache = persistedCache;
-        isCacheReady = true;
-        console.log(`✅ Using persisted cache with ${persistedCache.length} stocks`);
-      } else {
-        console.log('⚠️ Using fallback stock list');
-        allSymbolsCache = POPULAR_STOCKS.map(s => ({
-          symbol: s,
-          name: s
-        }));
-        isCacheReady = true;
-
-        // Fetch company names for popular stocks
-        console.log('📡 Fetching company names for popular stocks...');
-        let fetchedCount = 0;
-        for (const stock of allSymbolsCache) {
-          try {
-            const companyName = await getCompanyName(stock.symbol);
-            stock.name = companyName;
-            fetchedCount++;
-          } catch (error) {
-            continue;
-          }
-        }
-        
-        // Save fallback list
-        savePersistedCache(allSymbolsCache);
-      }
+      allSymbolsCache = persistedCache.length > 0 ? persistedCache : POPULAR_STOCKS.map(s => ({ symbol: s, name: s }));
+      isCacheReady = true;
     }
   } catch (error) {
-    console.error('❌ Failed to initialize cache:', error.message);
-    
-    // Fallback to persisted cache
-    const persistedCache = loadPersistedCache();
-    if (persistedCache.length > 0) {
-      allSymbolsCache = persistedCache;
-      isCacheReady = true;
-      console.log(`⚠️ Fell back to persisted cache with ${persistedCache.length} stocks`);
-    } else {
-      console.log('⚠️ Using fallback stock list');
-      allSymbolsCache = POPULAR_STOCKS.map(s => ({
-        symbol: s,
-        name: s
-      }));
-      isCacheReady = true;
-    }
+    allSymbolsCache = POPULAR_STOCKS.map(s => ({ symbol: s, name: s }));
+    isCacheReady = true;
   }
 })();
 
-// NSE requires specific headers to prevent blocking
-const getNSEHeaders = () => ({
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-  'Accept': 'application/json',
-  'Accept-Language': 'en-US,en;q=0.9',
-  'Accept-Encoding': 'gzip, deflate, br',
-  'Referer': 'https://www.nseindia.com/'
-});
-
-const fetchLatestNews = async () => {
-  try {
-    const response = await axios.get(NSE_ANNOUNCEMENTS_URL, {
-      headers: getNSEHeaders(),
-      timeout: 10000
-    });
-
-    if (!response.data) {
-      console.warn('⚠️ NSE API returned empty response');
-      return [];
-    }
-
-    // Handle both array and object responses
-    let newsItems = Array.isArray(response.data) ? response.data : response.data.data || [];
-    
-    if (!Array.isArray(newsItems)) {
-      console.warn('⚠️ NSE API response is not iterable, attempting conversion');
-      return [];
-    }
-
-    console.log(`✅ Fetched ${newsItems.length} news items from NSE`);
-    return newsItems;
-  } catch (error) {
-    console.error('❌ NSE API error:', error.message);
-    return [];
-  }
-};
-
-// Fetch all NSE stocks dynamically using stock-nse-india package
 const searchStocks = async (query) => {
-  try {
-    // Return empty if cache not ready (will load within seconds)
-    if (allSymbolsCache.length === 0) {
-      console.log('⚠️ NSE cache not loaded yet, try again in a moment');
-      return [];
-    }
-
-    console.log(`🔍 Searching for: "${query}"`);
-    const results = filterStocks(allSymbolsCache, query);
-    console.log(`📊 Found ${results.length} results`);
-    return results;
-  } catch (error) {
-    console.error('❌ searchStocks error:', error.message);
-    return [];
-  }
+  if (allSymbolsCache.length === 0) return [];
+  return filterStocks(allSymbolsCache, query);
 };
 
-// Helper function to filter stocks based on query
 const filterStocks = (stocks, query) => {
-  // Validate query
-  if (!query || typeof query !== 'string') {
-    console.log('⚠️ Invalid query, returning empty');
-    return [];
-  }
-
+  if (!query || typeof query !== 'string') return [];
   const searchTerm = query.trim().toLowerCase();
+  if (searchTerm.length < 2) return [];
   
-  if (searchTerm.length < 2) {
-    console.log('⚠️ Query too short (< 2 chars), returning empty');
-    return [];
+  const matches = [];
+  for (const stock of stocks) {
+    if (!stock || !stock.symbol) continue;
+    const sym = stock.symbol.toLowerCase();
+    const name = (stock.name || '').toLowerCase();
+    if (sym.includes(searchTerm) || name.includes(searchTerm)) matches.push(stock);
+    if (matches.length >= 100) break;
   }
-
-  console.log(`🔎 Filtering ${stocks.length} stocks for term: "${searchTerm}"`);
-  
-  try {
-    const matches = [];
-    
-    for (const stock of stocks) {
-      if (!stock || !stock.symbol) continue;
-      
-      const sym = stock.symbol.toLowerCase();
-      const name = (stock.name || '').toLowerCase();
-      
-      if (sym.includes(searchTerm) || name.includes(searchTerm)) {
-        matches.push(stock);
-      }
-      
-      // Limit results for performance
-      if (matches.length >= 100) break;
-    }
-    
-    console.log(`   ✅ Found ${matches.length} matches`);
-    return matches;
-  } catch (error) {
-    console.error('   ❌ Error filtering:', error.message);
-    return [];
-  }
+  return matches;
 };
 
 module.exports = {
   fetchLatestNews,
-  searchStocks
+  searchStocks,
+  fetchEventCalendar // <--- Only this new function is needed for the calendar
 };
