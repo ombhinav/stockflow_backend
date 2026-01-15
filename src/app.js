@@ -7,8 +7,9 @@ const authRoutes = require("./routes/auth.routes");
 const stocksRoutes = require("./routes/stocks.routes");
 const alertsRoutes = require("./routes/alerts.routes");
 const notificationsRoutes = require("./routes/notifications.routes");
-const paymentRoutes = require("./routes/payment.routes"); // <--- 1. NEW IMPORT
+const paymentRoutes = require("./routes/payment.routes"); 
 const calendarRoutes = require("./routes/calendar.routes");
+const ipoRoutes = require("./routes/ipo.routes"); // 🟢 1. NEW IMPORT
 
 const app = express();
 
@@ -109,8 +110,9 @@ app.use("/api/auth", authLimiter, authRoutes);
 app.use("/api/stocks", stocksRoutes);
 app.use("/api/alerts", alertsRoutes);
 app.use("/api/notifications", notificationsRoutes);
-app.use("/api/payments", paymentRoutes); // <--- 2. NEW ROUTE
+app.use("/api/payments", paymentRoutes);
 app.use("/api/calendar", calendarRoutes);
+app.use("/api/ipo", ipoRoutes); // 🟢 2. NEW ROUTE
 
 /* =========================
    ❤️ Health Check

@@ -4,26 +4,20 @@ const pool = require('./src/config/database');
 const fs = require('fs');
 const path = require('path');
 const { startMonitoring } = require('./src/services/monitoring.service');
-const { syncCalendarEvents } = require('./src/services/calendar.service'); // <--- New Import
+const { syncCalendarEvents } = require('./src/services/calendar.service');
+// 🟢 NEW IMPORT
+const { syncIPOData } = require('./src/services/ipo.service'); 
 
 const PORT = process.env.PORT || 5000;
 
-// 1. Define the missing function
-// ... existing imports ...
-
 const initializeDatabase = async () => {
   try {
-    // FIX: Point to 'src/models/schema.sql' instead of root
     const schemaPath = path.join(__dirname, 'src', 'models', 'schema.sql');
-    
-    // Check if file exists before reading to avoid crashing
     if (!fs.existsSync(schemaPath)) {
         console.error(`❌ Schema file not found at: ${schemaPath}`);
         return false;
     }
-
     const schema = fs.readFileSync(schemaPath, 'utf8');
-    
     await pool.query(schema);
     console.log('✅ Database schema initialized');
     return true;
@@ -33,9 +27,6 @@ const initializeDatabase = async () => {
   }
 };
 
-// ... rest of server.js ...
-
-// 2. Start Server
 const startServer = async () => {
   try {
     const dbInitialized = await initializeDatabase();
@@ -51,8 +42,13 @@ const startServer = async () => {
         // Start Background Services
         startMonitoring(); 
         
-        // Start Calendar Sync (Fetches NSE data)
-        await syncCalendarEvents(); 
+        // 🟢 Run both Syncs in Parallel
+        console.log('🔄 Starting Data Sync...');
+        Promise.all([
+            syncCalendarEvents(),
+            syncIPOData() 
+        ]).then(() => console.log('✨ All Data Syncs Completed'));
+        
       } else {
         console.log('⚠️ Services skipped - database not available');
       }

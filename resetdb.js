@@ -11,11 +11,10 @@ if (!connectionString) {
 }
 
 const resetDatabase = async () => {
-  // FIXED: Added SSL configuration here
   const client = new Client({
     connectionString,
     ssl: {
-      rejectUnauthorized: false // Required for most cloud databases (Render, Neon, etc.)
+      rejectUnauthorized: false
     }
   });
 
@@ -23,10 +22,11 @@ const resetDatabase = async () => {
     await client.connect();
     console.log('✅ Connected to PostgreSQL database (SSL)...');
 
-    // 1. DROP EXISTING TABLES
+    // 1. DROP EXISTING TABLES (Added ipo_events)
     console.log('🗑️  Dropping existing tables...');
     const dropQuery = `
       DROP TABLE IF EXISTS 
+        ipo_events,        -- 🟢 Added this
         alert_history, 
         alert_stocks, 
         sent_news, 
