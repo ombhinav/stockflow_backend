@@ -10,6 +10,7 @@ const notificationsRoutes = require("./routes/notifications.routes");
 const paymentRoutes = require("./routes/payment.routes"); 
 const calendarRoutes = require("./routes/calendar.routes");
 const ipoRoutes = require("./routes/ipo.routes"); // 🟢 1. NEW IMPORT
+const aiRoutes = require("./routes/ai.routes");
 
 const app = express();
 
@@ -113,6 +114,7 @@ app.use("/api/notifications", notificationsRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/calendar", calendarRoutes);
 app.use("/api/ipo", ipoRoutes); // 🟢 2. NEW ROUTE
+app.use("/api/ai", aiRoutes);
 
 /* =========================
    ❤️ Health Check
