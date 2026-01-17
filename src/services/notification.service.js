@@ -2,6 +2,7 @@ const axios = require('axios');
 const pdf = require('pdf-parse');
 const pool = require('../config/database');
 const { sendWhatsAppAlert } = require('./twilio.service');
+const { sendTelegramAlert } = require('./telegram.service');
 const { summarizeNews } = require('./grok.service');
 const { NSE_ANNOUNCEMENTS_URL } = require('../config/constants');
 
@@ -161,12 +162,23 @@ class NotificationService {
       // Send to all watchers
       for (const user of watchers) {
         try {
-          await sendWhatsAppAlert(user.phone_number, symbol, message);
+          if (user.login_method === 'telegram' && user.telegram_chat_id) {
+            // Send via Telegram
+            await sendTelegramAlert(user.telegram_chat_id, symbol, message);
+            console.log(`[INFO] Alert sent via Telegram to user ${user.id}`);
+          } else if (user.login_method === 'whatsapp' && user.phone_number) {
+            // Send via WhatsApp
+            await sendWhatsAppAlert(user.phone_number, symbol, message);
+            console.log(`[INFO] Alert sent via WhatsApp to user ${user.id}`);
+          } else {
+            console.warn(`[WARN] No valid contact info for user ${user.id} (login_method: ${user.login_method})`);
+          }
           
           // Log notification in database
           await this.logNotification(user.id, symbol, desc, message, seqId);
         } catch (error) {
-          console.error(`[ERROR] Failed to send message to ${user.phone_number}:`, error.message);
+          const contactInfo = user.login_method === 'telegram' ? user.telegram_chat_id : user.phone_number;
+          console.error(`[ERROR] Failed to send ${user.login_method} alert to ${contactInfo}:`, error.message);
         }
       }
 
@@ -185,7 +197,7 @@ class NotificationService {
   async getWatchlistUsers(symbol) {
     try {
       const query = `
-        SELECT DISTINCT u.id, u.phone_number 
+        SELECT DISTINCT u.id, u.phone_number, u.login_method, u.telegram_chat_id
         FROM users u
         INNER JOIN alert_stocks a ON u.id = a.user_id
         WHERE a.stock_symbol = $1 AND a.is_enabled = TRUE AND u.is_verified = TRUE
